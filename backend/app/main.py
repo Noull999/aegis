@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import init_db
 from app.dependencies import get_db, get_redis
-from app.routers import actions, agents
+from app.routers import actions, agents, policies
 
 
 @asynccontextmanager
@@ -27,6 +27,7 @@ app = FastAPI(
 
 app.include_router(agents.router)
 app.include_router(actions.router)
+app.include_router(policies.router)
 
 
 @app.get("/health")

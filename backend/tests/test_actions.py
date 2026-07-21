@@ -22,7 +22,7 @@ async def test_create_action(client: AsyncClient):
     assert data["action_type"] == "send_email"
     assert data["payload"] == {"to": "user@example.com", "subject": "Hello"}
     assert data["status"] == "pending"
-    assert data["decision"] is None
+    assert data["decision"] == "review"
     assert "id" in data
 
 
@@ -70,5 +70,5 @@ async def test_action_creates_audit_log(client: AsyncClient, db_session):
     from uuid import UUID
     result = await db_session.execute(select(AuditLog).where(AuditLog.action_id == UUID(action_id)))
     logs = result.scalars().all()
-    assert len(logs) == 1
-    assert logs[0].event_type == "action_created"
+    assert len(logs) >= 1
+    assert any(log.event_type == "action_created" for log in logs)
