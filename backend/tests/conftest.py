@@ -35,13 +35,46 @@ async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 class FakeRedis:
-    """Minimal in-memory Redis fake for health checks."""
+    """Minimal in-memory Redis fake for health checks and Redis Streams."""
+
+    def __init__(self):
+        self._streams: dict = {}
+        self._stream_seq = 0
+
+    def _next_id(self) -> str:
+        self._stream_seq += 1
+        return f"{self._stream_seq}-0"
 
     async def ping(self):
         return True
 
     async def close(self):
         pass
+
+    async def xadd(self, stream: str, fields: dict) -> str:
+        if stream not in self._streams:
+            self._streams[stream] = []
+        msg_id = self._next_id()
+        # Redis stores values as strings; mimic that loosely.
+        self._streams[stream].append((msg_id, dict(fields)))
+        return msg_id
+
+    async def xread(self, streams: dict, count: int = 1, block: int = 0):
+        # streams: {stream_key: last_id}
+        # Return entries with IDs greater than last_id for each stream.
+        result = []
+        for stream_key, last_id in streams.items():
+            entries = self._streams.get(stream_key, [])
+            if last_id == "0":
+                filtered = entries[-count:] if count else entries
+            else:
+                filtered = [e for e in entries if e[0] > last_id][-count:]
+            if filtered:
+                result.append([stream_key, filtered])
+        return result
+
+    async def xack(self, stream: str, group: str, *ids: str) -> int:
+        return len(ids)
 
 
 async def override_get_redis() -> AsyncGenerator[FakeRedis, None]:

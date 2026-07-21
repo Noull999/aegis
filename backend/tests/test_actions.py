@@ -72,3 +72,72 @@ async def test_action_creates_audit_log(client: AsyncClient, db_session):
     logs = result.scalars().all()
     assert len(logs) >= 1
     assert any(log.event_type == "action_created" for log in logs)
+
+
+@pytest.mark.asyncio
+async def test_approve_pending_action(client: AsyncClient):
+    r = await client.post("/agents", json={"name": "approve-agent", "scopes": ["write"]})
+    assert r.status_code == 201
+    agent_id = r.json()["id"]
+
+    r = await client.post("/actions", json={"agent_id": agent_id, "action_type": "send_email"})
+    assert r.status_code == 201
+    data = r.json()
+    assert data["status"] == "pending"
+    action_id = data["id"]
+
+    r = await client.post(f"/actions/{action_id}/approve", json={"reason": "Looks good"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "executed"
+    assert data["resolution"]["decision"] == "approved"
+    assert data["resolution"]["reason"] == "Looks good"
+
+
+@pytest.mark.asyncio
+async def test_reject_pending_action(client: AsyncClient):
+    r = await client.post("/agents", json={"name": "reject-agent", "scopes": ["write"]})
+    assert r.status_code == 201
+    agent_id = r.json()["id"]
+
+    r = await client.post("/actions", json={"agent_id": agent_id, "action_type": "send_email"})
+    assert r.status_code == 201
+    action_id = r.json()["id"]
+
+    r = await client.post(f"/actions/{action_id}/reject", json={"reason": "Too risky"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "rejected"
+    assert data["resolution"]["reason"] == "Too risky"
+
+
+@pytest.mark.asyncio
+async def test_cannot_approve_non_pending_action(client: AsyncClient):
+    r = await client.post("/agents", json={"name": "nonpending-agent", "scopes": ["read"]})
+    assert r.status_code == 201
+    agent_id = r.json()["id"]
+
+    r = await client.post("/actions", json={"agent_id": agent_id, "action_type": "read_file"})
+    assert r.status_code == 201
+    action_id = r.json()["id"]
+
+    r = await client.post(f"/actions/{action_id}/approve", json={})
+    assert r.status_code == 400
+    assert "not pending" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_list_actions_filter_by_status(client: AsyncClient):
+    r = await client.post("/agents", json={"name": "filter-agent", "scopes": ["write"]})
+    assert r.status_code == 201
+    agent_id = r.json()["id"]
+
+    r = await client.post("/actions", json={"agent_id": agent_id, "action_type": "send_email"})
+    assert r.status_code == 201
+
+    r = await client.get("/actions?status=pending")
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data, list)
+    assert len(data) >= 1
+    assert all(a["status"] == "pending" for a in data)

@@ -16,6 +16,9 @@ class ActionStatus(str, PyEnum):
     pending = "pending"
     approved = "approved"
     denied = "denied"
+    rejected = "rejected"
+    executed = "executed"
+    failed = "failed"
     reviewed = "reviewed"
 
 

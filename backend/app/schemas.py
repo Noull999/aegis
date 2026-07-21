@@ -65,6 +65,19 @@ class ActionRead(BaseModel):
         from_attributes = True
 
 
+class ActionListParams(BaseModel):
+    status: Optional[str] = None
+    action_type: Optional[str] = None
+    agent_id: Optional[UUID] = None
+    limit: int = Field(50, ge=1, le=200)
+    offset: int = Field(0, ge=0)
+
+
+class ActionReviewRequest(BaseModel):
+    reason: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 # ---------------------------------------------------------------------------
 # Audit log schemas
 # ---------------------------------------------------------------------------
