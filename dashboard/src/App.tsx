@@ -18,21 +18,31 @@ interface Action {
   context: Record<string, any>
   status: string
   decision: string | null
+  risk_score: number | null
   created_at: string
   resolved_at: string | null
   resolution: Record<string, any> | null
+}
+
+interface AuditLog {
+  id: string
+  action_id: string | null
+  event_type: string
+  details: Record<string, any>
+  timestamp: string
 }
 
 function App() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [pendingActions, setPendingActions] = useState<Action[]>([])
   const [allActions, setAllActions] = useState<Action[]>([])
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
-      const [agentsRes, pendingRes, allRes] = await Promise.all([
+      const [agentsRes, pendingRes, allRes, auditRes] = await Promise.all([
         fetch(`${API_URL}/agents`).then((r) => (r.ok ? r.json() : [])),
         fetch(`${API_URL}/actions?status=pending&limit=50`).then((r) =>
           r.ok ? r.json() : []
@@ -40,10 +50,14 @@ function App() {
         fetch(`${API_URL}/actions?limit=10`).then((r) =>
           r.ok ? r.json() : []
         ),
+        fetch(`${API_URL}/audit?limit=20`).then((r) =>
+          r.ok ? r.json() : []
+        ),
       ])
       setAgents(agentsRes)
       setPendingActions(pendingRes)
       setAllActions(allRes)
+      setAuditLogs(auditRes)
       setError(null)
     } catch (err) {
       setError('No se pudo conectar con el backend')
@@ -88,6 +102,13 @@ function App() {
     } catch (err) {
       alert('Error al rechazar acción')
     }
+  }
+
+  const riskColor = (score: number | null) => {
+    if (score === null) return '#6b7280'
+    if (score >= 70) return '#dc2626'
+    if (score >= 40) return '#d97706'
+    return '#16a34a'
   }
 
   if (loading) return <p style={{ padding: '2rem' }}>Cargando...</p>
@@ -190,6 +211,7 @@ function App() {
                 <th style={{ padding: '0.5rem' }}>Tipo</th>
                 <th style={{ padding: '0.5rem' }}>Estado</th>
                 <th style={{ padding: '0.5rem' }}>Decisión</th>
+                <th style={{ padding: '0.5rem' }}>Riesgo</th>
                 <th style={{ padding: '0.5rem' }}>Creado</th>
               </tr>
             </thead>
@@ -226,6 +248,9 @@ function App() {
                     </span>
                   </td>
                   <td style={{ padding: '0.5rem' }}>{action.decision || '-'}</td>
+                  <td style={{ padding: '0.5rem', color: riskColor(action.risk_score), fontWeight: 'bold' }}>
+                    {action.risk_score ?? '-'}
+                  </td>
                   <td style={{ padding: '0.5rem' }}>
                     {new Date(action.created_at).toLocaleString()}
                   </td>
@@ -233,6 +258,40 @@ function App() {
               ))}
             </tbody>
           </table>
+        )}
+      </section>
+
+      <section>
+        <h2>📋 Auditoría ({auditLogs.length} últimos eventos)</h2>
+        {auditLogs.length === 0 ? (
+          <p>No hay eventos de auditoría.</p>
+        ) : (
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
+            {auditLogs.map((log) => (
+              <div
+                key={log.id}
+                style={{
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '6px',
+                  padding: '0.75rem',
+                  background: '#f9fafb',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong>{log.event_type}</strong>
+                  <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                    {new Date(log.timestamp).toLocaleString()}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.85rem', color: '#374151', marginTop: '0.25rem' }}>
+                  action_id: {log.action_id || '-'}
+                </div>
+                <pre style={{ background: '#f3f4f6', padding: '0.5rem', borderRadius: '4px', overflow: 'auto', fontSize: '0.8rem' }}>
+                  {JSON.stringify(log.details, null, 2)}
+                </pre>
+              </div>
+            ))}
+          </div>
         )}
       </section>
     </div>

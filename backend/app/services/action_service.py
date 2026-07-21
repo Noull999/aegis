@@ -29,7 +29,7 @@ async def create_action(
     if not agent.is_active:
         raise ValueError("Agent is inactive")
 
-    decision, matched_policy = await policy_service.evaluate_action(
+    decision, matched_policy, risk_score = await policy_service.evaluate_action(
         db, agent, data.action_type
     )
 
@@ -43,7 +43,7 @@ async def create_action(
         context=dict(data.context),
         status=action_status,
         decision=decision,
-        risk_score=None,
+        risk_score=risk_score,
         resolution=None,
     )
     db.add(action)

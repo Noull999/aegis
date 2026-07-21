@@ -92,15 +92,54 @@ _DEFAULT_REVIEW_ACTIONS = {
 }
 
 
+# OWASP-like risk scoring factors.
+_RISK_LEVEL_SCORE = {
+    "low": 10,
+    "medium": 30,
+    "high": 60,
+    "critical": 90,
+}
+
+
+def _score_action(
+    action_type: str,
+    decision: str,
+    matched_policy: Optional[Policy],
+    agent_has_scopes: bool,
+) -> float:
+    """Compute a 0-100 risk score for an action.
+
+    Higher score means higher risk. This is intentionally simple for the MVP.
+    """
+    score = 0.0
+
+    if matched_policy is not None:
+        score += _RISK_LEVEL_SCORE.get(matched_policy.risk_level, 30)
+    else:
+        # No explicit policy: higher base uncertainty.
+        score += 25
+
+    if action_type in _DEFAULT_REVIEW_ACTIONS:
+        score += 15
+
+    if not agent_has_scopes:
+        score += 20
+
+    if decision == "deny":
+        score += 10
+
+    return min(score, 100.0)
+
+
 async def evaluate_action(
     db: AsyncSession,
     agent: Agent,
     action_type: str,
-) -> Tuple[str, Optional[Policy]]:
-    """Evaluate an action against policies and return a decision.
+) -> Tuple[str, Optional[Policy], float]:
+    """Evaluate an action against policies and return a decision + risk score.
 
-    Returns a tuple of (decision, matched_policy). Decision is one of:
-    ``allow``, ``review``, ``deny``.
+    Returns a tuple of (decision, matched_policy, risk_score). Decision is one
+    of: ``allow``, ``review``, ``deny``.
     """
     policies = await list_policies(db, active_only=True)
 
@@ -112,12 +151,15 @@ async def evaluate_action(
             break
 
     if matched is not None:
-        if not _agent_has_scopes(agent, matched.scopes_required or []):
-            return "deny", matched
-        return matched.decision, matched
+        has_scopes = _agent_has_scopes(agent, matched.scopes_required or [])
+        if not has_scopes:
+            return "deny", matched, _score_action(action_type, "deny", matched, False)
+        return matched.decision, matched, _score_action(
+            action_type, matched.decision, matched, True
+        )
 
     # No explicit policy: default to review for risky actions, allow otherwise.
     if action_type in _DEFAULT_REVIEW_ACTIONS:
-        return "review", None
+        return "review", None, _score_action(action_type, "review", None, True)
 
-    return "allow", None
+    return "allow", None, _score_action(action_type, "allow", None, True)
